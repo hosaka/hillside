@@ -50,7 +50,7 @@ mod app {
         usb_dev: UsbDevice<'static, hal::usb::UsbBus>,
         usb_class: HidClass<'static, hal::usb::UsbBus, keyberon::keyboard::Keyboard<()>>,
         #[lock_free]
-        layout: Layout<16, 4, 7, hillside::CustomActions>,
+        layout: Layout<12, 4, 7, hillside::CustomAction>,
     }
 
     #[local]
@@ -58,10 +58,10 @@ mod app {
         matrix: Matrix<
             gpio::Pin<gpio::DynPinId, gpio::FunctionSioInput, gpio::PullUp>,
             gpio::Pin<gpio::DynPinId, gpio::FunctionSioOutput, gpio::PullDown>,
-            8,
+            6,
             4,
         >,
-        debouncer: Debouncer<[[bool; 8]; 4]>,
+        debouncer: Debouncer<[[bool; 6]; 4]>,
         watchdog: hal::watchdog::Watchdog,
         timer: hal::timer::Alarm0,
         transform: fn(Event) -> Event,
@@ -116,7 +116,7 @@ mod app {
 
         // keeb setup
         let layout = Layout::new(&hillside::LAYERS);
-        let debouncer = Debouncer::new([[false; 8]; 4], [[false; 8]; 4], 5);
+        let debouncer = Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5);
 
         let mut timer = hal::Timer::new(ctx.device.TIMER, &mut resets, &clocks)
             .alarm_0()
@@ -127,31 +127,30 @@ mod app {
         // todo: figureout pin numbering for hillside
         let matrix = Matrix::new(
             [
-                pins.gpio2.into_pull_up_input().into_dyn_pin(),
-                pins.gpio3.into_pull_up_input().into_dyn_pin(),
-                pins.gpio4.into_pull_up_input().into_dyn_pin(),
-                pins.gpio5.into_pull_up_input().into_dyn_pin(),
-                pins.gpio6.into_pull_up_input().into_dyn_pin(),
-                pins.gpio7.into_pull_up_input().into_dyn_pin(),
-                pins.gpio8.into_pull_up_input().into_dyn_pin(),
-                pins.gpio9.into_pull_up_input().into_dyn_pin(),
+                pins.gpio18.into_pull_up_input().into_dyn_pin(),
+                pins.gpio17.into_pull_up_input().into_dyn_pin(),
+                pins.gpio16.into_pull_up_input().into_dyn_pin(),
+                pins.gpio15.into_pull_up_input().into_dyn_pin(),
+                pins.gpio14.into_pull_up_input().into_dyn_pin(),
+                pins.gpio13.into_pull_up_input().into_dyn_pin(),
             ],
             [
+                pins.gpio8.into_push_pull_output().into_dyn_pin(),
+                pins.gpio9.into_push_pull_output().into_dyn_pin(),
                 pins.gpio10.into_push_pull_output().into_dyn_pin(),
-                pins.gpio11.into_push_pull_output().into_dyn_pin(),
                 pins.gpio12.into_push_pull_output().into_dyn_pin(),
-                pins.gpio13.into_push_pull_output().into_dyn_pin(),
             ],
         )
         .unwrap();
 
         // handedness
-        let hand = pins.gpio14.into_floating_input();
+        // todo: col0 and row3 should signal left hand
+        let hand = pins.gpio19.into_floating_input();
         let is_left = hand.is_low().unwrap();
         let transform: fn(Event) -> Event = if is_left {
             |e| e
         } else {
-            |e| e.transform(|i, j| (i, 15 - j))
+            |e| e.transform(|i, j| (i, 11 - j))
         };
 
         // usb setup
@@ -220,8 +219,8 @@ mod app {
         }
         match tick {
             CustomEvent::Press(event) => match event {
-                hillside::CustomActions::Reset => cortex_m::peripheral::SCB::sys_reset(),
-                hillside::CustomActions::Bootloader => hal::rom_data::reset_to_usb_boot(0, 0),
+                hillside::CustomAction::Reset => cortex_m::peripheral::SCB::sys_reset(),
+                hillside::CustomAction::Bootloader => hal::rom_data::reset_to_usb_boot(0, 0),
             },
             _ => (),
         };
