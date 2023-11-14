@@ -3,8 +3,7 @@
 
 use panic_probe as _;
 
-use cortex_m::prelude::_embedded_hal_watchdog_Watchdog;
-use cortex_m::prelude::_embedded_hal_watchdog_WatchdogEnable;
+use cortex_m::prelude::*;
 use embedded_hal::digital::v2::InputPin;
 use fugit::{ExtU32, RateExtU32};
 use keyberon::debounce::Debouncer;
@@ -12,6 +11,7 @@ use keyberon::hid::HidClass;
 use keyberon::key_code;
 use keyberon::layout::{CustomEvent, Event, Layout};
 use keyberon::matrix::Matrix;
+use nb::block;
 use rtic::app;
 use usb_device::bus::UsbBusAllocator;
 use usb_device::class::UsbClass;
@@ -21,10 +21,11 @@ use usb_device::device::UsbDeviceState;
 use sparkfun_pro_micro_rp2040 as bsp;
 
 use bsp::hal;
-use bsp::hal::prelude::*;
 use hal::gpio;
+use hal::prelude::*;
 use hal::timer::Alarm;
 use hal::uart;
+use hal::usb;
 
 mod hillside;
 
@@ -47,8 +48,8 @@ mod app {
 
     #[shared]
     struct Shared {
-        usb_dev: UsbDevice<'static, hal::usb::UsbBus>,
-        usb_class: HidClass<'static, hal::usb::UsbBus, keyberon::keyboard::Keyboard<()>>,
+        usb_dev: UsbDevice<'static, usb::UsbBus>,
+        usb_class: HidClass<'static, usb::UsbBus, keyberon::keyboard::Keyboard<()>>,
         #[lock_free]
         layout: Layout<12, 4, 7, hillside::CustomAction>,
     }
@@ -67,9 +68,10 @@ mod app {
         transform: fn(Event) -> Event,
         rx: UartReader,
         tx: UartWriter,
+        buffer: [u8; 4],
     }
 
-    #[init(local = [bus: Option<UsbBusAllocator<hal::usb::UsbBus>> = None])]
+    #[init(local = [bus: Option<UsbBusAllocator<usb::UsbBus>> = None])]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
         // mcu setup
         let mut resets = ctx.device.RESETS;
@@ -89,7 +91,7 @@ mod app {
         .unwrap();
 
         let sio = hal::sio::Sio::new(ctx.device.SIO);
-        let pins = hal::gpio::Pins::new(
+        let pins = gpio::Pins::new(
             ctx.device.IO_BANK0,
             ctx.device.PADS_BANK0,
             sio.gpio_bank0,
@@ -143,18 +145,8 @@ mod app {
         )
         .unwrap();
 
-        // handedness
-        // todo: col0 and row3 should signal left hand
-        let hand = pins.gpio19.into_floating_input();
-        let is_left = hand.is_low().unwrap();
-        let transform: fn(Event) -> Event = if is_left {
-            |e| e
-        } else {
-            |e| e.transform(|i, j| (i, 11 - j))
-        };
-
         // usb setup
-        let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
+        let usb_bus = UsbBusAllocator::new(usb::UsbBus::new(
             ctx.device.USBCTRL_REGS,
             ctx.device.USBCTRL_DPRAM,
             clocks.usb_clock,
@@ -166,6 +158,17 @@ mod app {
         let usb = ctx.local.bus.as_ref().unwrap();
         let usb_class = keyberon::new_class(usb, ());
         let usb_dev = keyberon::new_device(usb);
+
+        // handedness
+        // note: col0 and row3 can signal left hand if bridge is soldered
+        // let hand = pins.gpio19.into_floating_input();
+        // let is_left = hand.is_low().unwrap();
+        let is_host = usb_dev.state() == UsbDeviceState::Configured;
+        let transform: fn(Event) -> Event = if !is_host {
+            |e| e
+        } else {
+            |e| e.transform(|i, j| (i, 11 - j))
+        };
 
         watchdog.start(10_000.micros());
 
@@ -183,6 +186,7 @@ mod app {
                 transform,
                 tx,
                 rx,
+                buffer: [0; 4],
             },
             init::Monotonics(),
         );
@@ -198,8 +202,12 @@ mod app {
 
         let keys = ctx.local.matrix.get().unwrap();
         for event in ctx.local.debouncer.events(keys).map(ctx.local.transform) {
-            // note: serialize event and send it over tx using nb::block
-            // ctx.local.tx.write_full_blocking(b"Key");
+            // serialize an event and send it byte-by-byte over tx
+            for &byte in &serialize(event) {
+                block!(ctx.local.tx.write(byte)).unwrap();
+            }
+            // let buff = serialize(event);
+            // ctx.local.tx.write_full_blocking(&buff);
             handle_event::spawn(event).unwrap();
         }
         tick_keeb::spawn().unwrap();
@@ -250,9 +258,32 @@ mod app {
         })
     }
 
-    #[task(binds = UART0_IRQ, priority = 4, local = [rx])]
+    #[task(binds = UART0_IRQ, priority = 4, local = [rx, buffer])]
     fn uart_rx(ctx: uart_rx::Context) {
-        // note: read uart into a shared buffer
-        // ctx.local.rx.read_full_blocking(buffer)
+        if let Ok(byte) = ctx.local.rx.read() {
+            ctx.local.buffer.rotate_left(1);
+            ctx.local.buffer[3] = byte;
+
+            if ctx.local.buffer[3] == b'\n' {
+                if let Ok(event) = deserialize(&ctx.local.buffer[..]) {
+                    handle_event::spawn(event).unwrap();
+                }
+            }
+        }
     }
+}
+
+fn deserialize(bytes: &[u8]) -> Result<Event, ()> {
+    return match *bytes {
+        [b'P', i, j, b'\n'] => Ok(Event::Press(i, j)),
+        [b'R', i, j, b'\n'] => Ok(Event::Release(i, j)),
+        _ => Err(()),
+    };
+}
+
+fn serialize(event: Event) -> [u8; 4] {
+    return match event {
+        Event::Press(i, j) => [b'P', i, j, b'\n'],
+        Event::Release(i, j) => [b'R', i, j, b'\n'],
+    };
 }

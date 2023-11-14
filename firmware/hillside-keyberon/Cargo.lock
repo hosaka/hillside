@@ -253,6 +253,7 @@ dependencies = [
  "embedded-hal",
  "fugit",
  "keyberon",
+ "nb 1.1.0",
  "panic-probe",
  "sparkfun-pro-micro-rp2040",
  "usb-device",

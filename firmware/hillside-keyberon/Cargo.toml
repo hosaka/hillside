@@ -17,6 +17,7 @@ cortex-m-rtic = "1.1.4"
 embedded-hal = "0.2.7"
 fugit = "0.3.7"
 keyberon = { git = "https://github.com/TeXitoi/keyberon", rev = "24bd53f850bb5f07b1eee36fe3ac75082d439c10", version = "0.2.0" }
+nb = "1.1.0"
 panic-probe = "0.3.1"
 sparkfun-pro-micro-rp2040 = "0.7.0"
 usb-device = "0.2.9"
