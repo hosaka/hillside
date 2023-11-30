@@ -305,7 +305,7 @@ dependencies = [
  "keyberon",
  "nb 1.1.0",
  "panic-probe",
- "sparkfun-pro-micro-rp2040",
+ "rp-pico",
  "usb-device",
 ]
 
@@ -472,6 +472,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
+name = "rp-pico"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6341771e6f8e5d130b2b3cbc23435b7847761adf198af09f4b2a60407d43bd56"
+dependencies = [
+ "cortex-m-rt",
+ "fugit",
+ "rp2040-boot2",
+ "rp2040-hal",
+ "usb-device",
+]
+
+[[package]]
 name = "rp2040-boot2"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -596,18 +609,6 @@ name = "semver-parser"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
-
-[[package]]
-name = "sparkfun-pro-micro-rp2040"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b1a3358b61f9d86fcd23a114861521e1ce87436bf1399c85b96df5d69c8fa3b"
-dependencies = [
- "cortex-m-rt",
- "embedded-hal",
- "rp2040-boot2",
- "rp2040-hal",
-]
 
 [[package]]
 name = "spin"

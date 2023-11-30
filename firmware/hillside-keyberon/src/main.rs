@@ -6,7 +6,7 @@ use defmt_rtt as _;
 use panic_probe as _;
 
 use cortex_m::prelude::*;
-// use embedded_hal::digital::v2::InputPin;
+use embedded_hal::digital::v2::InputPin;
 use fugit::{ExtU32, RateExtU32};
 use keyberon::debounce::Debouncer;
 use keyberon::hid::HidClass;
@@ -20,7 +20,8 @@ use usb_device::class::UsbClass;
 use usb_device::device::UsbDevice;
 use usb_device::device::UsbDeviceState;
 
-use sparkfun_pro_micro_rp2040 as bsp;
+use rp_pico as bsp;
+// use sparkfun_pro_micro_rp2040 as bsp;
 
 use bsp::hal;
 use hal::gpio;
@@ -41,7 +42,7 @@ type UartPins = (
 type UartReader = uart::Reader<hal::pac::UART0, UartPins>;
 type UartWriter = uart::Writer<hal::pac::UART0, UartPins>;
 
-#[app(device = sparkfun_pro_micro_rp2040::hal::pac, dispatchers = [PIO0_IRQ_0])]
+#[app(device = hal::pac, dispatchers = [PIO0_IRQ_0])]
 mod app {
 
     use super::*;
@@ -92,7 +93,7 @@ mod app {
         .unwrap();
 
         let sio = hal::sio::Sio::new(ctx.device.SIO);
-        let pins = gpio::Pins::new(
+        let pins = bsp::Pins::new(
             ctx.device.IO_BANK0,
             ctx.device.PADS_BANK0,
             sio.gpio_bank0,
@@ -129,18 +130,19 @@ mod app {
 
         let matrix = Matrix::new(
             [
-                pins.gpio18.into_pull_up_input().into_dyn_pin(),
-                pins.gpio17.into_pull_up_input().into_dyn_pin(),
-                pins.gpio16.into_pull_up_input().into_dyn_pin(),
-                pins.gpio15.into_pull_up_input().into_dyn_pin(),
-                pins.gpio14.into_pull_up_input().into_dyn_pin(),
-                pins.gpio13.into_pull_up_input().into_dyn_pin(),
+                pins.gpio27.into_pull_up_input().into_dyn_pin(),
+                pins.gpio26.into_pull_up_input().into_dyn_pin(),
+                pins.gpio22.into_pull_up_input().into_dyn_pin(),
+                pins.gpio20.into_pull_up_input().into_dyn_pin(),
+                // this is gpio23 in rp2040 and copi in sparkfun pro micro
+                pins.b_power_save.into_pull_up_input().into_dyn_pin(),
+                pins.gpio21.into_pull_up_input().into_dyn_pin(),
             ],
             [
-                pins.gpio8.into_push_pull_output().into_dyn_pin(),
+                pins.gpio5.into_push_pull_output().into_dyn_pin(),
+                pins.gpio6.into_push_pull_output().into_dyn_pin(),
+                pins.gpio7.into_push_pull_output().into_dyn_pin(),
                 pins.gpio9.into_push_pull_output().into_dyn_pin(),
-                pins.gpio10.into_push_pull_output().into_dyn_pin(),
-                pins.gpio12.into_push_pull_output().into_dyn_pin(),
             ],
         )
         .unwrap();
@@ -159,9 +161,10 @@ mod app {
         let usb_class = keyberon::new_class(usb, ());
         let usb_dev = keyberon::new_device(usb);
 
-        // handedness
+        // gpio19 is vbus_detect on sea picro
         // note: col0 and row3 can signal left hand if bridge is soldered
-        let is_host = usb_dev.state() == UsbDeviceState::Configured;
+        let vbus_pin = pins.gpio19.into_floating_input();
+        let is_host = vbus_pin.is_high().unwrap();
         let transform: fn(Event) -> Event = if !is_host {
             |e| e
         } else {
@@ -223,6 +226,7 @@ mod app {
         if ctx.shared.usb_dev.lock(|usb_dev| usb_dev.state()) != UsbDeviceState::Configured {
             return;
         }
+
         match tick {
             CustomEvent::Press(event) => match event {
                 hillside::CustomAction::Reset => cortex_m::peripheral::SCB::sys_reset(),

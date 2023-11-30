@@ -82,7 +82,7 @@ pub static LAYERS: keyberon::layout::Layers<12, 4, 7, CustomAction> = keyberon::
         [ t Q W E R T                                     Y      U I O P    t],
         [ t A S D F G                                     H      J K L Quote t],
         [ t Z X C V B                                     N      M Comma Dot Slash    t],
-        [ n t t {ESCAPE_FUN} {SPACE_NUM} {TAB_NUM} {ENTER_SYM} BSpace {DELETE_MED} t t n],
+        [ n t  {ESCAPE_FUN} {SPACE_NUM} {TAB_NUM} Lang1 CapsLock {ENTER_SYM} BSpace {DELETE_MED} t n],
     }
 
     // extra
@@ -90,15 +90,23 @@ pub static LAYERS: keyberon::layout::Layers<12, 4, 7, CustomAction> = keyberon::
         [ t Q W F P B J L U Y Quote t],
         [ t A R S T G  M N E I O t],
         [ t Z X C D B K H Comma Dot Slash t],
-        [ n t t {ESCAPE_FUN} {SPACE_NUM} {TAB_NUM} {ENTER_SYM} BSpace {DELETE_MED} t t n],
+        [ n t {ESCAPE_FUN} {SPACE_NUM} {TAB_NUM} t CapsLock {ENTER_SYM} BSpace {DELETE_MED} t n],
     }
 
     // sym
     {
         [ t '{' t * & '}' t t t t t t],
-        [ t :   ^ % $ +   t RShift RCtrl RAlt t t],
+        [ t :   ^ % $ +   t RShift RCtrl RAlt RGui t],
         [ t ~   # @ ! |   t t t t t t],
-        [ n t t '(' ')' '_' t t t t t n],
+        [ n t  '(' ')' '_' t t t t t t n],
+    }
+
+    // num
+    {
+        [ t t t t t t LBracket  7 8 9 RBracket   t],
+        [ t LGui LAlt LCtrl LShift t Equal    4 5 6 SColon     t],
+        [ t t t t t t  Bslash 1 2 3 Grave t],
+        [ n t t t t t  t Minus 0 Dot    t t ],
     }
 
     // tap
@@ -111,10 +119,18 @@ pub static LAYERS: keyberon::layout::Layers<12, 4, 7, CustomAction> = keyberon::
 
     // button
 
+    // fun
+    {
+        [ t t t t t t PScreen    F7 F8 F9 F12 t],
+        [ t LGui LAlt LCtrl LShift t ScrollLock F4 F5 F6 F11 t],
+        [ t t t t t t Pause      F1 F2 F3 F10 t],
+        [ n t t t t t t Tab Space Menu        t  n],
+    }
+
     // nav
     {
         [ t t t t t t {REDO} {PASTE} {COPY} {CUT} {UNDO} t],
-        [ t t LAlt LCtrl LShift t Left Down Up Right CapsLock t],
+        [ t LGui LAlt LCtrl LShift t Left Down Up Right CapsLock t],
         [ t t t t t t Home PgDown PgUp End Insert t],
         [ n t t t t t t t t t t n ],
     }
@@ -122,24 +138,9 @@ pub static LAYERS: keyberon::layout::Layers<12, 4, 7, CustomAction> = keyberon::
     // media
     {
         [ t t t t t t t t t t t t],
-        [ t MediaPreviousSong MediaVolDown MediaVolUp MediaNextSong t t RShift RCtrl RAlt t t],
+        [ t MediaPreviousSong MediaVolDown MediaVolUp MediaNextSong t t RShift RCtrl RAlt RGui t],
         [ t t t t t t t t t t t t],
-        [ n t t MediaMute MediaPlayPause MediaStop t t t t t n],
+        [ n t MediaMute MediaPlayPause MediaStop t t t t t t n],
     }
 
-    // num
-    {
-        [ t t t t t t LBracket  7 8 9 RBracket   t],
-        [ t t LAlt LCtrl LShift t Equal    4 5 6 SColon     t],
-        [ t t t t t t  Bslash 1 2 3 Grave t],
-        [ n t t t t t Minus 0 Dot    t t t ],
-    }
-
-    // fun
-    {
-        [ t t t t t t PScreen    F7 F8 F9 F12 t],
-        [ t t LAlt LCtrl LShift t ScrollLock F4 F5 F6 F11 t],
-        [ t t t t t t Pause      F1 F2 F3 F10 t],
-        [ n t t t t t Tab Space Menu       t  t  n],
-    }
 };
