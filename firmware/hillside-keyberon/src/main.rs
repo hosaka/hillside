@@ -1,10 +1,12 @@
 #![no_std]
 #![no_main]
 
+use defmt::*;
+use defmt_rtt as _;
 use panic_probe as _;
 
 use cortex_m::prelude::*;
-use embedded_hal::digital::v2::InputPin;
+// use embedded_hal::digital::v2::InputPin;
 use fugit::{ExtU32, RateExtU32};
 use keyberon::debounce::Debouncer;
 use keyberon::hid::HidClass;
@@ -31,12 +33,10 @@ mod hillside;
 
 type GpioUartTx = gpio::bank0::Gpio0;
 type GpioUartRx = gpio::bank0::Gpio1;
-// note: ws2812 pin is not available on Sea Picro EXT
-// type GpioUsbLed = gpio::bank0::Gpio25;
 
 type UartPins = (
-    gpio::Pin<GpioUartTx, gpio::FunctionUart, gpio::PullDown>,
-    gpio::Pin<GpioUartRx, gpio::FunctionUart, gpio::PullDown>,
+    gpio::Pin<GpioUartTx, gpio::FunctionUart, gpio::PullNone>,
+    gpio::Pin<GpioUartRx, gpio::FunctionUart, gpio::PullNone>,
 );
 type UartReader = uart::Reader<hal::pac::UART0, UartPins>;
 type UartWriter = uart::Writer<hal::pac::UART0, UartPins>;
@@ -73,7 +73,8 @@ mod app {
 
     #[init(local = [bus: Option<UsbBusAllocator<usb::UsbBus>> = None])]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
-        // mcu setup
+        info!("mcu setup");
+
         let mut resets = ctx.device.RESETS;
         let mut watchdog = hal::watchdog::Watchdog::new(ctx.device.WATCHDOG);
         watchdog.pause_on_debug(false);
@@ -98,8 +99,8 @@ mod app {
             &mut resets,
         );
 
-        // uart setup
-        let uart_pins = (pins.gpio0.into_function(), pins.gpio1.into_function());
+        info!("uart setup");
+        let uart_pins = (pins.gpio0.reconfigure(), pins.gpio1.reconfigure());
         let mut uart = uart::UartPeripheral::new(ctx.device.UART0, uart_pins, &mut resets)
             .enable(
                 uart::UartConfig::new(
@@ -116,7 +117,7 @@ mod app {
         // uart.enable_tx_interrupt();
         let (rx, tx) = uart.split();
 
-        // keeb setup
+        info!("keyboard setup");
         let layout = Layout::new(&hillside::LAYERS);
         let debouncer = Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5);
 
@@ -126,7 +127,6 @@ mod app {
         let _ = timer.schedule(1_000.micros());
         timer.enable_interrupt();
 
-        // todo: figureout pin numbering for hillside
         let matrix = Matrix::new(
             [
                 pins.gpio18.into_pull_up_input().into_dyn_pin(),
@@ -145,7 +145,7 @@ mod app {
         )
         .unwrap();
 
-        // usb setup
+        info!("usb setup");
         let usb_bus = UsbBusAllocator::new(usb::UsbBus::new(
             ctx.device.USBCTRL_REGS,
             ctx.device.USBCTRL_DPRAM,
@@ -161,8 +161,6 @@ mod app {
 
         // handedness
         // note: col0 and row3 can signal left hand if bridge is soldered
-        // let hand = pins.gpio19.into_floating_input();
-        // let is_left = hand.is_low().unwrap();
         let is_host = usb_dev.state() == UsbDeviceState::Configured;
         let transform: fn(Event) -> Event = if !is_host {
             |e| e
