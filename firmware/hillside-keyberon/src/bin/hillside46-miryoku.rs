@@ -30,7 +30,9 @@ use hal::timer::Alarm;
 use hal::uart;
 use hal::usb;
 
-mod hillside;
+use hillside_keyberon::common;
+use hillside_keyberon::layouts;
+use hillside_keyberon::mcu;
 
 type GpioUartTx = gpio::bank0::Gpio0;
 type GpioUartRx = gpio::bank0::Gpio1;
@@ -44,7 +46,6 @@ type UartWriter = uart::Writer<hal::pac::UART0, UartPins>;
 
 #[app(device = hal::pac, dispatchers = [PIO0_IRQ_0])]
 mod app {
-
     use super::*;
 
     #[shared]
@@ -52,20 +53,15 @@ mod app {
         usb_dev: UsbDevice<'static, usb::UsbBus>,
         usb_class: HidClass<'static, usb::UsbBus, keyberon::keyboard::Keyboard<()>>,
         #[lock_free]
-        layout: Layout<12, 4, 7, hillside::CustomAction>,
+        layout: Layout<12, 4, 7, layouts::common::CustomAction>,
     }
 
     #[local]
     struct Local {
-        matrix: Matrix<
-            gpio::Pin<gpio::DynPinId, gpio::FunctionSioInput, gpio::PullUp>,
-            gpio::Pin<gpio::DynPinId, gpio::FunctionSioOutput, gpio::PullDown>,
-            6,
-            4,
-        >,
+        matrix: Matrix<common::InputPin, common::OutputPin, 6, 4>,
         debouncer: Debouncer<[[bool; 6]; 4]>,
         watchdog: hal::watchdog::Watchdog,
-        timer: hal::timer::Alarm0,
+        alarm: hal::timer::Alarm0,
         transform: fn(Event) -> Event,
         rx: UartReader,
         tx: UartWriter,
@@ -74,23 +70,35 @@ mod app {
 
     #[init(local = [bus: Option<UsbBusAllocator<usb::UsbBus>> = None])]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
-        info!("mcu setup");
-
+        warn!("mcu setup");
         let mut resets = ctx.device.RESETS;
-        let mut watchdog = hal::watchdog::Watchdog::new(ctx.device.WATCHDOG);
-        watchdog.pause_on_debug(false);
-
-        let clocks = hal::clocks::init_clocks_and_plls(
+        let (mut watchdog, clocks) = mcu::init_clocks(
+            ctx.device.WATCHDOG,
             bsp::XOSC_CRYSTAL_FREQ,
             ctx.device.XOSC,
             ctx.device.CLOCKS,
             ctx.device.PLL_SYS,
             ctx.device.PLL_USB,
             &mut resets,
-            &mut watchdog,
-        )
-        .ok()
-        .unwrap();
+        );
+        let (_timer, alarm) = mcu::init_timer(ctx.device.TIMER, &mut resets, &clocks);
+
+        info!("usb setup");
+        *ctx.local.bus = Some(UsbBusAllocator::new(usb::UsbBus::new(
+            ctx.device.USBCTRL_REGS,
+            ctx.device.USBCTRL_DPRAM,
+            clocks.usb_clock,
+            true,
+            &mut resets,
+        )));
+        let usb_bus = ctx.local.bus.as_ref().unwrap();
+        let (usb_dev, usb_class) = mcu::init_usb(
+            usb_bus,
+            common::VID,
+            common::PID,
+            common::MANUFACTURER,
+            "hillside46",
+        );
 
         let sio = hal::sio::Sio::new(ctx.device.SIO);
         let pins = bsp::Pins::new(
@@ -119,14 +127,8 @@ mod app {
         let (rx, tx) = uart.split();
 
         info!("keyboard setup");
-        let layout = Layout::new(&hillside::LAYERS);
+        let layout = Layout::new(&layouts::miryoku::LAYERS);
         let debouncer = Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5);
-
-        let mut timer = hal::Timer::new(ctx.device.TIMER, &mut resets, &clocks)
-            .alarm_0()
-            .unwrap();
-        let _ = timer.schedule(1_000.micros());
-        timer.enable_interrupt();
 
         let matrix = Matrix::new(
             [
@@ -146,20 +148,6 @@ mod app {
             ],
         )
         .unwrap();
-
-        info!("usb setup");
-        let usb_bus = UsbBusAllocator::new(usb::UsbBus::new(
-            ctx.device.USBCTRL_REGS,
-            ctx.device.USBCTRL_DPRAM,
-            clocks.usb_clock,
-            true,
-            &mut resets,
-        ));
-
-        *ctx.local.bus = Some(usb_bus);
-        let usb = ctx.local.bus.as_ref().unwrap();
-        let usb_class = keyberon::new_class(usb, ());
-        let usb_dev = keyberon::new_device(usb);
 
         // gpio19 is vbus_detect on sea picro
         // note: col0 and row3 can signal left hand if bridge is soldered
@@ -183,7 +171,7 @@ mod app {
                 matrix,
                 debouncer,
                 watchdog,
-                timer,
+                alarm,
                 transform,
                 tx,
                 rx,
@@ -193,11 +181,11 @@ mod app {
         );
     }
 
-    #[task(binds = TIMER_IRQ_0, priority = 1, local = [matrix, debouncer, watchdog, timer, transform, tx])]
+    #[task(binds = TIMER_IRQ_0, priority = 1, local = [matrix, debouncer, watchdog, alarm, transform, tx])]
     fn tick(ctx: tick::Context) {
-        let timer = ctx.local.timer;
-        timer.clear_interrupt();
-        let _ = timer.schedule(1_000.micros());
+        let alarm = ctx.local.alarm;
+        alarm.clear_interrupt();
+        let _ = alarm.schedule(1_000.micros());
 
         ctx.local.watchdog.feed();
 
@@ -229,14 +217,18 @@ mod app {
 
         match tick {
             CustomEvent::Press(event) => match event {
-                hillside::CustomAction::Reset => cortex_m::peripheral::SCB::sys_reset(),
-                hillside::CustomAction::Bootloader => hal::rom_data::reset_to_usb_boot(0, 0),
+                layouts::common::CustomAction::Reset => cortex_m::peripheral::SCB::sys_reset(),
+                layouts::common::CustomAction::Bootloader => hal::rom_data::reset_to_usb_boot(0, 0),
             },
             _ => (),
         };
 
         // write HID report
-        let report: key_code::KbHidReport = ctx.shared.layout.keycodes().collect();
+        let report = ctx
+            .shared
+            .layout
+            .keycodes()
+            .collect::<key_code::KbHidReport>();
         if !ctx
             .shared
             .usb_class

@@ -1,11 +1,7 @@
-use keyberon::action::{k, l, m, Action, Action::*, HoldTapAction, HoldTapConfig};
+use keyberon::action::{Action, Action::*, HoldTapAction};
 use keyberon::key_code::KeyCode::{self, *};
 
-#[derive(Clone, Copy)]
-pub enum CustomAction {
-    Reset,
-    Bootloader,
-}
+use crate::layouts::common::*;
 
 enum Layers {
     Base,
@@ -15,16 +11,6 @@ enum Layers {
     Function,
     Navigation,
     Media,
-}
-
-const fn hold_layer_tap_key(layer: usize, key: KeyCode) -> HoldTapAction<CustomAction, KeyCode> {
-    return HoldTapAction {
-        timeout: 200,
-        tap_hold_interval: 0,
-        config: HoldTapConfig::Default,
-        hold: l(layer),
-        tap: k(key),
-    };
 }
 
 impl Layers {
@@ -45,35 +31,17 @@ impl Layers {
     }
 }
 
-const CUT: Action<CustomAction> = m(&&[LCtrl, X].as_slice());
-const COPY: Action<CustomAction> = m(&&[LCtrl, C].as_slice());
-const PASTE: Action<CustomAction> = m(&&[LCtrl, V].as_slice());
-const REDO: Action<CustomAction> = m(&&[LCtrl, Y].as_slice());
-const UNDO: Action<CustomAction> = m(&&[LCtrl, Z].as_slice());
-
-// generic USB keyboard
-// https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
-// const VID: u16 = 0x16c0;
-// const PID: u16 = 0x27db;
-// const PRODUCT: &str = "hillside";
-// const MANUFACTURER: &str = "Hillside by https://github.com/mmccoyd";
-
-#[allow(dead_code)]
-const RESET: Action<CustomAction> = Action::Custom(CustomAction::Reset);
-#[allow(dead_code)]
-const BOOTLOADER: Action<CustomAction> = Action::Custom(CustomAction::Bootloader);
+// macro_rules! s {
+//     ($k:indent) => {
+//         m(&[LShift, $k].as_slice())
+//     };
+// }
 
 const ENTER_SYM: Action<CustomAction> = HoldTap(&Layers::Symbol.hold_tap(Enter));
 const TAB_NUM: Action<CustomAction> = HoldTap(&Layers::Number.hold_tap(Tab));
 const ESCAPE_FUN: Action<CustomAction> = HoldTap(&Layers::Function.hold_tap(Escape));
 const SPACE_NUM: Action<CustomAction> = HoldTap(&Layers::Navigation.hold_tap(Space));
 const DELETE_MED: Action<CustomAction> = HoldTap(&Layers::Media.hold_tap(Delete));
-
-// macro_rules! s {
-//     ($k:indent) => {
-//         m(&[LShift, $k].as_slice())
-//     };
-// }
 
 // todo: figure out the lang and caps word keys
 pub static LAYERS: keyberon::layout::Layers<12, 4, 7, CustomAction> = keyberon::layout::layout! {
