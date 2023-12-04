@@ -32,10 +32,16 @@ impl Layers {
 }
 
 // macro_rules! s {
-//     ($k:indent) => {
+//     ($k:ident) => {
 //         m(&[LShift, $k].as_slice())
 //     };
 // }
+
+macro_rules! h {
+    ($k:ident, $m:ident) => {
+        HoldTap(&home_row_mod($k, $m))
+    };
+}
 
 const ENTER_SYM: Action<CustomAction> = HoldTap(&Layers::Symbol.hold_tap(Enter));
 const TAB_NUM: Action<CustomAction> = HoldTap(&Layers::Number.hold_tap(Tab));
@@ -48,7 +54,7 @@ pub static LAYERS: keyberon::layout::Layers<12, 4, 7, CustomAction> = keyberon::
     // base
     {
         [ t Q W E R T                                     Y      U I O P    t],
-        [ t A S D F G                                     H      J K L Quote t],
+        [ t {h!(A, LGui)} {h!(S, LAlt)} {h!(D, LCtrl)} {h!(F, LShift)} G H {h!(J, RShift)} {h!(K, RCtrl)} {h!(L, RAlt)} {h!(Quote, RGui)} t],
         [ t Z X C V B                                     N      M Comma Dot Slash    t],
         [ n t  {ESCAPE_FUN} {SPACE_NUM} {TAB_NUM} Lang1 CapsLock {ENTER_SYM} BSpace {DELETE_MED} t n],
     }
@@ -56,7 +62,7 @@ pub static LAYERS: keyberon::layout::Layers<12, 4, 7, CustomAction> = keyberon::
     // extra
     {
         [ t Q W F P B J L U Y Quote t],
-        [ t A R S T G  M N E I O t],
+        [ t {h!(A, LGui)} {h!(R, LAlt)} {h!(S, LCtrl)} {h!(T, LShift)} G M {h!(N, RShift)} {h!(E, RCtrl)} {h!(I, RAlt)} {h!(O, RGui)} t],
         [ t Z X C D B K H Comma Dot Slash t],
         [ n t {ESCAPE_FUN} {SPACE_NUM} {TAB_NUM} t CapsLock {ENTER_SYM} BSpace {DELETE_MED} t n],
     }

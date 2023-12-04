@@ -24,28 +24,19 @@ use rp_pico as bsp;
 // use sparkfun_pro_micro_rp2040 as bsp;
 
 use bsp::hal;
-use hal::gpio;
 use hal::prelude::*;
 use hal::timer::Alarm;
 use hal::uart;
 use hal::usb;
 
 use hillside_keyberon::common;
+use hillside_keyberon::keyboards::hillside46;
 use hillside_keyberon::layouts;
 use hillside_keyberon::mcu;
 
-type GpioUartTx = gpio::bank0::Gpio0;
-type GpioUartRx = gpio::bank0::Gpio1;
-
-type UartPins = (
-    gpio::Pin<GpioUartTx, gpio::FunctionUart, gpio::PullNone>,
-    gpio::Pin<GpioUartRx, gpio::FunctionUart, gpio::PullNone>,
-);
-type UartReader = uart::Reader<hal::pac::UART0, UartPins>;
-type UartWriter = uart::Writer<hal::pac::UART0, UartPins>;
-
 #[app(device = hal::pac, dispatchers = [PIO0_IRQ_0])]
 mod app {
+
     use super::*;
 
     #[shared]
@@ -59,12 +50,12 @@ mod app {
     #[local]
     struct Local {
         matrix: Matrix<common::InputPin, common::OutputPin, 6, 4>,
-        debouncer: Debouncer<[[bool; 6]; 4]>,
+        debouncer: Debouncer<common::PressedKeys6x4>,
         watchdog: hal::watchdog::Watchdog,
         alarm: hal::timer::Alarm0,
         transform: fn(Event) -> Event,
-        rx: UartReader,
-        tx: UartWriter,
+        rx: common::UartReader,
+        tx: common::UartWriter,
         buffer: [u8; 4],
     }
 
@@ -127,28 +118,6 @@ mod app {
         let (rx, tx) = uart.split();
 
         info!("keyboard setup");
-        let layout = Layout::new(&layouts::miryoku::LAYERS);
-        let debouncer = Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5);
-
-        let matrix = Matrix::new(
-            [
-                pins.gpio27.into_pull_up_input().into_dyn_pin(),
-                pins.gpio26.into_pull_up_input().into_dyn_pin(),
-                pins.gpio22.into_pull_up_input().into_dyn_pin(),
-                pins.gpio20.into_pull_up_input().into_dyn_pin(),
-                // this is gpio23 in rp2040 and copi in sparkfun pro micro
-                pins.b_power_save.into_pull_up_input().into_dyn_pin(),
-                pins.gpio21.into_pull_up_input().into_dyn_pin(),
-            ],
-            [
-                pins.gpio5.into_push_pull_output().into_dyn_pin(),
-                pins.gpio6.into_push_pull_output().into_dyn_pin(),
-                pins.gpio7.into_push_pull_output().into_dyn_pin(),
-                pins.gpio9.into_push_pull_output().into_dyn_pin(),
-            ],
-        )
-        .unwrap();
-
         // gpio19 is vbus_detect on sea picro
         // note: col0 and row3 can signal left hand if bridge is soldered
         let vbus_pin = pins.gpio19.into_floating_input();
@@ -158,6 +127,25 @@ mod app {
         } else {
             |e| e.transform(|i, j| (i, 11 - j))
         };
+
+        let cols = hillside46::cols(
+            pins.gpio27,
+            pins.gpio26,
+            pins.gpio22,
+            pins.gpio20,
+            // this is gpio23 in rp2040 and copi in sparkfun pro micro
+            pins.b_power_save,
+            pins.gpio21,
+        );
+        let rows = hillside46::rows(pins.gpio5, pins.gpio6, pins.gpio7, pins.gpio9);
+        let matrix = Matrix::new(cols, rows).unwrap();
+        let debouncer = Debouncer::new(
+            common::PressedKeys6x4::default(),
+            common::PressedKeys6x4::default(),
+            5,
+        );
+        let layout = Layout::new(&layouts::miryoku::LAYERS);
+        // let keyboard = hillside46::Keyboard { matrix, debouncer };
 
         watchdog.start(10_000.micros());
 
@@ -185,16 +173,16 @@ mod app {
     fn tick(ctx: tick::Context) {
         let alarm = ctx.local.alarm;
         alarm.clear_interrupt();
-        let _ = alarm.schedule(1_000.micros());
+        alarm.schedule(1_000.micros()).unwrap();
 
         ctx.local.watchdog.feed();
 
         let keys = ctx.local.matrix.get().unwrap();
         for event in ctx.local.debouncer.events(keys).map(ctx.local.transform) {
             // serialize an event and send it byte-by-byte over tx
-            for &byte in &serialize(event) {
-                block!(ctx.local.tx.write(byte)).unwrap();
-            }
+            // for &byte in &serialize(event) {
+            //     block!(ctx.local.tx.write(byte)).unwrap();
+            // }
             // let buff = serialize(event);
             // ctx.local.tx.write_full_blocking(&buff);
             handle_event::spawn(event).unwrap();
@@ -210,7 +198,6 @@ mod app {
     #[task(priority = 2, shared = [usb_dev, usb_class, layout])]
     fn tick_keeb(mut ctx: tick_keeb::Context) {
         let tick = ctx.shared.layout.tick();
-
         if ctx.shared.usb_dev.lock(|usb_dev| usb_dev.state()) != UsbDeviceState::Configured {
             return;
         }
